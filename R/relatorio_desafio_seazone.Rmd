@@ -1,0 +1,496 @@
+---
+title: "Relatório da análise dos dados da Airbnb - desafio Seazone"
+author: "Wesley Almeida Cruz"
+header-includes:
+   - \usepackage[default]{sourcesanspro}
+   - \usepackage[T1]{fontenc}
+mainfont: SourceSansPro
+output:
+  pdf_document
+geometry:
+  left=1in,right=1in,top=1in,bottom=1in
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, dev="cairo_pdf")
+library(kableExtra)  # Cria tabelas com boa estética no R Markdown
+```
+
+# DESCRIÇÃO DO DESAFIO
+
+Os conjuntos de dados disponível para o desafio consiste em informações sobre anúncios e ocupação no Airbnb. Abaixo é possível notar que os dois conjuntos de dados são bastante diversos, temos colunas de dados numéricos, categóricos, de data e até mesmo uma coluna com a descrição do imóvel.
+
+O conjunto de dados **desafio_priceav.csv** possui $354.520$ linhas e 5 colunas. Abaixo está a lista de variáveis relevantes e seus respectivos contextos no conjunto de dados:
+
+- listing_id (identificador do anúncio)
+- booked_on (quando o anúncio foi alugado, caso tenha sido)
+- date (data que o imóvel foi alugado)
+- price_string (preço ofertado)
+- available (condição binária, 1 = imóvel alugado, 0 = imóvel desocupado)
+
+O conjunto de dados **desafio_details.csv** possui $4.691$ linhas e 8 colunas. Abaixo está a lista de variáveis relevantes e seus respectivos contextos no conjunto de dados:
+
+- listing_id (identificador do anúncio)
+- suburb (bairros disponíveis nos dados)
+- ad_name (descrição do imóvel)
+- number_of_bedrooms (número de quartos no imóvel)
+- number_of_bathrooms (número de banheiros no imóvel)
+- star_rating (nota de 1 à 5 do anúncio)
+- is_superhost (condição binária, se o anunciante é um superhost (1) ou não (0))
+- number_of_reviews (número de comentários no anúncio)
+
+Vale ressaltar que como esses dados estão atrelalados a um período de tempo, todos os *insights* e interpretações devem mencionar esse fato. O escopo do tempo da coleta dos dados foi de 30/03/2020 à  02/11/2021.
+
+Além disso, uma variável muito interessante de mencionar é a *suburb*, ou bairro, com uma pesquisa rápida no *Google* é possível perceber que os 5 bairros mencionados nos dados são pontos turísticos de Florianópolis.
+
+**Toda a análise, incluindo tabelas e gráficos, foi feita utilizando o software RStudio e programada com a linguagem R e todos os gráficos foram feitos utilizando o pacote ggplot2**.
+
+**OBS: Algumas imagens possuem muitos elementos e podem demorar um pouco para renderizar no PDF, basta esperar alguns segundos que essas imagens irão aparecer**
+
+# LEITURA DOS DADOS E PACOTES
+
+Foram lidos os dois arquivos disponíveis individualmente, o objeto **price** faz referência ao arquivo **desafio_priceav.csv** e o objeto **details** se refere ao arquivo **desafio_details.csv**. Abaixo é mostrado as 6 primeiras linhas de ambos conjuntos de dados.
+
+```{r}
+## OBS: Não adicionei acentuação de acordo com a norma da lingua portuguesa nos
+## comentarios para garantir uma melhor visualizacao em qualquer computador.
+
+# Pacotes relevantes para a analise
+library(ggcorrplot)
+library(gridExtra)
+library(tidyverse)
+library(polycor)
+library(scales)
+
+# Lendo os arquivos desafio_priceav.csv e desafio_details.csv no R
+price <- read.csv("desafio_priceav.csv")
+details <- read.csv("desafio_details.csv",encoding = "UTF-8")
+
+# Retirando variaveis que não tem importancia para a analise
+price <- price[,-c(1,2)]
+details <- details[,-1]
+
+# Alterando os nomes das colunas para melhor visualizacao
+names(price) <- c("listing_id","booked_on","date",
+                  "price_string","available")
+names(details)[1] <- "listing_id"
+```
+
+# ORDENAÇÃO DOS BAIRROS POR ORDEM CRESCENTE DE LISTINGS
+
+Para encontrar a informação necessária, foi preciso agrupar os dados pelos bairros utilizando a função *group_by()* do pacote **dplyr** (chamado pelo pacote **tidyverse**) e contar o número de anúncios em cada bairro com a função *count()*.
+
+```{r}
+# Calculando o numero de listings por bairro
+listing_bairro <- details %>% 
+  group_by(suburb) %>%        # Agrupando os dados por bairro
+  select(listing_id) %>%      # Selecionando os ids
+  count() %>%                 # Contando os ids por bairro
+  arrange(n)                  # Ordenando os resultados
+
+df1 <- listing_bairro
+names(df1) <- c("Bairro","Quantidade de anúncios")
+kable(df1,format = "latex", booktabs = TRUE) %>%
+  kable_styling(position = "center")
+```
+
+Os bairros Ingleses, Canasvieiras e Jurerê (em ordem) somam $87.5\%$ de todos os anúncios entre o período de tempo analisado.
+
+```{r,fig.align='center'}
+# Grafico de barras com valores acima das barras do numero de listing por bairro 
+ggplot(listing_bairro, aes(x=reorder(suburb,n),y=n))+
+  geom_col(fill="#FF585D")+
+  geom_text(aes(label=paste(n,"(",round(100*n/4691,1),"%)")),
+            vjust=-0.5,size=3, color="#484848",) +
+  ylim(0,2800)+
+  labs(x = "Bairros", y = "Total",
+       title = "Número de listings por bairro")+
+  theme_light()+
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(colour = "#484848"))
+```
+
+# ORDENAÇÃO DOS BAIRROS POR ORDEM CRESCENTE DO FATURAMENTO MÉDIO DE LISTINGS
+
+Para fazer uma ordenação dos bairros de acordo com o faturamento médio dos anúncios é necessário primeiramente juntar os conjuntos de dados, já que só metade da informação pode ser adquirida por um desses conjuntos. Podemos notar que ambos os dados dispõe da variável *listing_id*, dessa forma podemos usa-la como um conectivo entre o conjunto price e details. 
+
+O novo conjunto **price_details** é a junção de **price** e **details** e a sua dimensão é de $354.520$ linhas por 12 colunas.
+
+```{r}
+# Mesclando os conjuntos de dados price e details usando como conectivo a variável listing_id
+price_details <- left_join(price,details, by = "listing_id")
+```
+
+Para calcular o faturamento total por bairro, foi necessário agrupar os dados por *listing_id* e *bairro*, respectivamente, e somar a variável *price_String* em cada grupo criado, isso é equivalente a somar todos o histórico de preços ofertados de um específico anúncio.
+
+```{r}
+# Calculando o faturamento total por bairro
+faturamento_total <- price_details %>%
+  group_by(listing_id,suburb) %>% # Agrupando por listing_id e bairro
+  summarise_at(vars("price_string"),
+               list(faturamento=sum)) # Somando os preços ofertados
+```
+
+
+```{r}
+price_details$listing_id %>%
+  unique() %>% length() # Número total de listings_id em price_details
+faturamento_total$listing_id %>%
+  unique() %>% length() # Número total de listings_id em faturamento_total
+```
+
+O fato dos valores únicos dos *listing_ids* serem iguais para os conjuntos de dados **price_details** e **faturamento_total** prova que só existe um bairro por listing nessa amostra. Dessa forma somando todos os *listings_ids* identicos por bairro irá retornar o faturamento total daquele anúncio específico, justificando a forma que foi calculado o faturamento total por bairro.
+
+
+Para encontrar o faturamento médio por bairro basta agrupar o conjunto de dados **faturamento_total** por bairro e aplicar a média nesses grupos.
+
+```{r}
+# Calculando o faturamento medio por bairro
+faturamento_medio <- faturamento_total %>%
+  group_by(suburb) %>%               # Agrupando por bairro
+  summarise_at(vars("faturamento"),
+               list(media=mean)) %>% # Media de faturamento por bairro
+  arrange(media)                     # Ordenando as medias
+
+df2 <- faturamento_medio
+names(df2) <- c("Bairro","Faturamento médio")
+
+kable(df2,format = "latex", booktabs = TRUE) %>%
+  kable_styling(position = "center")
+```
+
+O faturamento médio dos anúncios é maior nos bairros com um maior número de anúncios, assim, os bairros Ingleses, Canasvieiras e Jurerê somam $87.5\%$ de todos os *listings*. Porém, o bairro com a maior média não é o que possui mais anúncios (Ingleses) e sim o que compõe somente $11.5\%$ do total de anúncios, o bairro Jurerê.
+
+Uma pesquisa breve me indicou que provavelmente o bairro Jurerê é considerado mais nobre, com uma urbanização projetada pelo arquiteto Oscar Niemeyer e considerado um empreendimento imobiliário em larga escala. Por essas e mais razões é possível justificar a média alta de preços.
+
+```{r,fig.align='center'}
+# Grafico de barras com valores acima das barras do faturamento medio de listing por bairro 
+ggplot(faturamento_medio, aes(x=reorder(suburb,media),y=media))+
+  geom_col(fill="#FF585D")+
+  geom_text(aes(label=dollar(round(media),prefix = "R$ ")),
+            vjust=-0.5,size=3, color="#484848")+
+  scale_y_continuous(labels=dollar_format(prefix="R$ "),
+                     limits=c(0,50000))+
+  labs(x = "Bairros", y = "Faturamento médio",
+       title = "Faturamento médio dos listings por bairro")+
+  theme_light()+
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(colour = "#484848"))
+```
+
+# EXISTEM CORRELAÇÕES ENTRE AS CARACTERÍSTICAS DE UM ANÚNCIO E SEU FATURAMENTO?
+
+Inicialmente, eu decidi juntar **price_details** com a terceira coluna de **faturamento_total**, utilizando como conector a primeira coluna desse conjunto de dados, *listing_id*.
+
+```{r}
+# Mesclando os conjuntos de dados price_details e faturamento_total
+price_details <- left_join(price_details,
+                           faturamento_total[c(1,3)],
+                           by = "listing_id")
+
+price_details$available <- as.factor(price_details$available)
+price_details$suburb <- as.factor(price_details$suburb)
+price_details$is_superhost <- as.factor(price_details$is_superhost)
+price_details$star_rating <- as.factor(price_details$star_rating)
+```
+
+Como existem características que podem e devem ser consideradas categóricas que serão cruzadas com variáveis numéricas, os métodos convencionais para calcular matrizes de correlação entre variáveis não funcionam.
+
+Existe um método capaz de calcular correlações entre variáveis categóricas e numéricas, gerando uma matriz de correlações heterogênea. Porém, as variáveis categóricas devem ser ordinais, ou seja, devem ter uma ordenação natural ($0 < 1 < 2 < ...$). Todas as variáveis com exceção de *suburb* (bairro), atendem essas condições, então podemos calcular a matriz de correlação heterogênea.
+
+A interpretacão do resultado é análoga ao método convencional: quanto maior o valor da medida mais correlacionado são as variáveis e quanto menor a medida menos as variáveis sao correlacionadas. A medida de correlação varia entre $-1$ e $1$. 
+
+De acordo com a visualização abaixo, é possível notar que as correlações mais intensas com faturamento são *price_string* ($r = 0.51$), *number_of_bathrooms* ($r = 0.31$) e *number_of_bedrooms* ($r = 0.28$). A variável *star_rating* também apresentou uma leve correlação ($r = 0.12$), mas provavelmente não é significativa.
+
+O alto valor da correlação entre o preço do anúncio e o faturamento é esperado, pois imóveis mais valorizados geralmente também são bastante procurados. O número de banheiros e quartos também faz sentido, pois quanto maior o espaço do imóvel mais pessoas podem alugar, uma família ou um grupo de amigos por exemplo.
+
+```{r,fig.align='center'}
+correlacao <- hetcor(price_details[,c(4,5,8:13)])
+
+# Visualizando a matriz de correlacao heterogenea de forma grafica
+ggcorrplot(correlacao$correlations,
+           method = "square",
+           type = "upper",
+           lab = T)+
+  theme_light()+
+labs(x = "", y = "")+
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 90,vjust = 0.6))
+```
+
+Outra forma de verificar se existem possíveis correlações entre variáveis categóricas e numéricas é utilizando gráficos de *boxplots*. Se houverem diferenças significativas entre a linha mediana (linha preta) do *boxplot* entre os níveis, então provavelmente existe algum tipo de associação entre as duas variáveis.
+
+```{r}
+# Função que encontra valores que não pertencem em um vetor
+`%notin%` <- Negate(`%in%`)
+
+# Função para gerar boxplots entre o faturamento e variaveis categoricas
+boxp <- function(var,var_n,tt){
+  num <- which(names(price_details)==var)
+  price_details$vari <- price_details[,num]
+  
+  price_details <- price_details %>% filter(is.na(vari) == F)
+  
+  ggplot(price_details, aes(x=as.factor(vari),y=faturamento))+
+    geom_boxplot(fill="#FF585D")+
+    scale_y_continuous(labels=dollar_format(prefix="R$ "))+
+    labs(x = var_n, y = "Faturamento",title = tt)+
+    theme_light()+
+    theme(panel.grid = element_blank())
+}
+
+# Função para gerar boxplots entre o faturamento e variaveis categoricas retirando os outliers
+boxp_out <- function(var,var_n,tt){
+  num <- which(names(price_details)==var)
+  price_details$vari <- price_details[,num]
+  
+  outliers <- boxplot(price_details$faturamento,plot = F)$out
+  
+  price_details <- price_details %>% filter(is.na(vari) == F)
+  price_details <- price_details %>% filter(faturamento %notin% outliers)
+  
+  ggplot(price_details, 
+         aes(x=as.factor(vari),y=faturamento))+
+    geom_boxplot(fill="#FF585D",outlier.shape = NA)+
+    scale_y_continuous(limits = quantile(price_details$faturamento, c(0.1, 0.9)))+
+    scale_y_continuous(labels=dollar_format(prefix="R$ "))+
+    labs(x = var_n, y = "Faturamento",title=tt)+
+    theme_light()+
+    theme(panel.grid = element_blank())
+}
+
+p1_1 <- boxp(names(price_details)[5],"Disponibilidade","Com outliers")
+p1_2 <- boxp(names(price_details)[6],"Bairro","Com outliers")
+p1_3 <- boxp(names(price_details)[10],"Star rating","Com outliers")
+p1_4 <- boxp(names(price_details)[11],"Superhost","Com outliers")
+p1_5 <- boxp(names(price_details)[8],"Número de quartos","Com outliers")
+p1_6 <- boxp(names(price_details)[9],"Número de banheiros","Com outliers")
+
+p2_1 <- boxp_out(names(price_details)[5],"Disponibilidade","Sem outliers")
+p2_2 <- boxp_out(names(price_details)[6],"Bairro","Sem outliers")
+p2_3 <- boxp_out(names(price_details)[10],"Star rating","Sem outliers")
+p2_4 <- boxp_out(names(price_details)[11],"Superhost","Sem outliers")
+p2_5 <- boxp_out(names(price_details)[8],"Número de quartos","Sem outliers")
+p2_6 <- boxp_out(names(price_details)[9],"Número de banheiros","Sem outliers")
+```
+
+Visualmente, as variáveis que apresentaram possíveis diferenças entre os níveis foram *suburb*, *number_of_bathrooms* e *number_of_bedrooms*  e talvez a variável *star_rating*. Isso confirma a informação encontrada na matriz de correlação heterogênea. Lembrando que *suburb* não foi considerado para o cálculo da matriz de correlação porquê não é uma variável ordinal.
+
+```{r,fig.align='center',out.extra='trim={0 1cm 0 1cm},clip'}
+grid.arrange(p1_1,p2_1,ncol=1)
+grid.arrange(p1_2,p2_2,ncol=1)
+grid.arrange(p1_3,p2_3,ncol=1)
+grid.arrange(p1_4,p2_4,ncol=1)
+grid.arrange(p1_5,p2_5,ncol=1)
+grid.arrange(p1_6,p2_6,ncol=1)
+```
+
+Por outro lado, para visualizar sinais de correlação entre duas variáveis numéricas podemos mostrar em um gráfico de dispersão, se houver alguma tendência negativa ou positiva então existe a possibilidade de que as variáveis sejam correlacionadas.
+
+```{r}
+# Função para gerar graficos de dispersao entre o faturamento e variaveis numericas
+dispersao <- function(var,var_n,tt){
+  num <- which(names(price_details)==var)
+  price_details$vari <- price_details[,num]
+  
+  ggplot(price_details,aes(x=vari,y=faturamento))+
+    geom_point(color="#FF585D",alpha=0.3)+
+    scale_y_continuous(labels=dollar_format(prefix="R$ "))+
+    labs(x = var_n, y = "Faturamento",title = tt)+
+    theme_light()+
+    theme(panel.grid = element_blank())
+}
+
+# Função para gerar graficos de dispersao entre o faturamento e variaveis numericas
+dispersao_out <- function(var,var_n,tt){
+  num <- which(names(price_details)==var)
+  price_details$vari <- price_details[,num]
+  
+  outliers1 <- boxplot(price_details$faturamento,plot = F)$out
+  outliers2 <- boxplot(price_details$vari,plot = F)$out
+  
+  price_details <- price_details %>% 
+    filter(faturamento < min(outliers1) & vari < min(outliers2))
+  
+  ggplot(price_details,aes(x=vari,y=faturamento))+
+    geom_point(color="#FF585D",alpha=0.3)+
+    scale_y_continuous(labels=dollar_format(prefix="R$ "))+
+    labs(x = var_n, y = "Faturamento",title=tt)+
+    theme_light()+
+    theme(panel.grid = element_blank())
+}
+
+p3_1 <- dispersao(names(price_details)[4],"Preço ofertado","Com outliers")
+p3_2 <- dispersao(names(price_details)[12],"Número de reviews","Com outliers")
+
+p4_1 <- dispersao_out(names(price_details)[4],"Preço ofertado","Sem outliers")
+p4_2 <- dispersao_out(names(price_details)[12],"Número de reviews","Sem outliers")
+```
+
+Aparentemente a variável *price_string* apresenta uma tendência positiva (quanto maior o preço ofertado maior é o faturamento), porém os dados são muito concentrados devido à valores *outliers* de ambas as variaveis e uma variabilidade alta, ao retirar esses valores *outliers* dos dados essa tendência se torna levemente mais aparente. Já a variável *number_of_reviews* apresenta tendência negativa mas não se percebe uma diferença significativa ao retirar os valores *outliers*.
+
+```{r,fig.align='center',out.extra='trim={0 1cm 0 1cm},clip'}
+grid.arrange(p3_1,p4_1,ncol=2)
+grid.arrange(p3_2,p4_2,ncol=2)
+```
+
+Também achei interessante responder se o número total de anúncios se correlaciona com o faturamento, e como era de se esperar de fato há uma correlação ($r = 0.68$).
+
+```{r,fig.align='center'}
+# Calculando o numero total de anuncios
+total_listing <- price_details %>%
+  group_by(listing_id) %>%             # Agrupando por listing_id
+  count()                              # Contagem por listing_id
+names(total_listing)[2] <- "total_reservas"
+
+#Mesclando o conjunto de dados price_details e total_listing com o conectivo listing_id
+price_details <- left_join(price_details,total_listing, by = "listing_id")
+
+cor(price_details$faturamento,price_details$total_reservas) # r = 0.68
+
+ggplot(price_details,aes(x=total_reservas,y=faturamento))+
+  geom_point(color="#FF585D")+
+  scale_y_continuous(labels=dollar_format(prefix="R$ "))+
+  labs(x = "Total de reservas", y = "Faturamento")+
+  theme_light()+
+  theme(panel.grid = element_blank())
+
+```
+
+# QUAL A ANTECENDÊNCIA MÉDIA DAS RESERVAS?
+
+Inicialmente, devemos encontrar a diferença entre as variáveis *date* e *booked_on* do conjunto de dados **price_details**. Fazemos isso transformando as duas variáveis para o formato de data e aplicando a função *difftime()*.
+
+```{r}
+# Transformando booked_on e date em dados de data
+price_details$booked_on <- ifelse(price_details$booked_on=="blank",
+                                  NA,price_details$booked_on)
+price_details$booked_on <- as.Date(price_details$booked_on)
+price_details$date <- as.Date(price_details$date)
+
+# Calculando a diferenca entre a data alugada e quando foi alugado,
+# encontrando a antecedencia da reserva 
+price_details$date_diff <- difftime(price_details$date,
+                                    price_details$booked_on,units="days")
+
+# Criando um objeto para o vetor de antecedencia
+date_diff <- price_details$date_diff 
+date_diff <- na.omit(date_diff)     # retirando os NAs
+```
+
+
+```{r}
+mean(date_diff) # Antecedência média
+```
+
+O valor da antecedência média foi de aproximadamente 32 dias, porém, ao olhar o histograma do vetor de antecedência notamos que esse valor esta muito alto, devido a alguns valores extremos, como por exemplo $7644$ dias de antecedencia, que aumentaram o valor da média que é sensível a valores *outliers*. 
+
+```{r,fig.align='center'}
+ggplot()+
+  geom_histogram(aes(x=date_diff),bins=50,col="#484848",fill = "#FF585D")+
+  labs(x="Antecedência (em dias)", y = "Contagem",
+       title="Histograma da diferença entre as datas sem nenhuma alteração")+
+  theme_light()+
+  theme(panel.grid = element_blank(),
+        title = element_text(size=7))
+
+```
+
+Dessa forma para encontrar a antecedência média corretamente seria de interesse retirar os valores *outliers*.
+
+```{r}
+# Encontrando os valores outliers e os removendo
+outliers_diff <- boxplot(date_diff, plot = F)$out
+date_diff_out <- date_diff[-which(date_diff %in% outliers_diff)]
+```
+
+Apos retirar os valores *outliers* ficamos com uma antecência média de aproximadamente 15 dias, que é um valor muito mais realista.
+
+```{r}
+mean(date_diff_out) # média sem outlier
+```
+
+É possível ver que ao retirar os valores *outliers* a distribuição de antecedência varia entre 0 e aproximadamente 80 dias.
+
+```{r,fig.align='center'}
+p5 <- ggplot()+
+  geom_histogram(aes(x=date_diff),col="#484848",fill = "#FF585D")+
+  labs(x="Antecedência (em dias)", y = "Densidade",
+       title="Diferença entre as datas sem nenhuma alteração")+
+  theme_light()+
+  theme(panel.grid = element_blank(),
+        title = element_text(size=7))
+
+p6 <- ggplot()+
+  geom_histogram(aes(x=date_diff_out),col="#484848",fill = "#FF585D")+
+  labs(x="Antecedência (em dias)", y = "Densidade",
+       title="Diferença entre as datas sem outliers")+
+  theme_light()+
+  theme(panel.grid = element_blank(),
+        title = element_text(size=7))
+
+grid.arrange(p5,p6,ncol=2)
+```
+
+Vale ressaltar que as medianas ($50\%$ dos dados) foram bastante proximas, mediana de 6 dias de antecedência para os dados originais e 4 dias de antecedência para os dados sem *outliers*, a medida da mediana é mais confiável nessa situação de valores extremos, pois é uma medida robusta contra valores extremos.
+
+```{r}
+median(date_diff_out) # mediana sem outlier
+median(date_diff_out) # mediana com outlier
+```
+
+## ESSE NÚMERO É MAIOR OU MENOR NOS FINAIS DE SEMANA?
+
+Para responder essa pergunta devemos criar uma nova variável *weekday* que transforma a variável *date* em dias da semana de acordo com o dia do ano, para isso basta aplicar a função *weekdays()*. Posteriormente, foi aplicado algumas transformações nos níveis para regionalizar a variável, por exemplo *monday* foi trocado por segunda-feira.
+
+```{r}
+# Criando a variavel para os dias da semana com a funcao weekdays
+price_details$weekday <- weekdays(price_details$date)
+
+# Transformando weekday em fator e ajeitando os niveis
+price_details$weekday <- as.factor(price_details$weekday) 
+levels(price_details$weekday) <- c("Sexta-feira","Segunda-feira","Sábado",
+                                   "Domingo","Quinta-feira","Terça-feira",
+                                   "Quarta-feira")
+# Reorganizando os niveis de weekday
+price_details$weekday <- factor(price_details$weekday,
+                                levels = levels(price_details$weekday)
+                                [c(2,6,7,5,1,3,4)])
+```
+
+
+```{r}
+weekday <- price_details %>%
+  group_by(weekday) %>%                   # Agrupando por weekday
+  select(date_diff) %>%                   # Selecionando a antecedencia media
+  na.omit() %>%                           # Retirando valores NA
+  filter(date_diff %notin% outliers_diff) %>%  # Retirando os outliers
+  summarise_at(vars("date_diff"),list(media = mean)) # Media de antecedencia
+
+df3 <- weekday
+names(df3) <- c("Dias da Semana","Antecedência média")
+kable(df3,format = "latex", booktabs = TRUE) %>%
+  kable_styling(position = "center")
+```
+
+Aparentemente existe um pico na sexta-feira, seguido por domingo, sábado e quinta-feira. Porem, ao meu ver as diferenças entre esses dias não são significativas. Os dias mais incomuns para reservar são segunda-feira, terca-feira e quarta-feira.
+
+```{r,fig.align='center'}
+# Visualizando a diferenca media por dias da semana
+ggplot(weekday, aes(x=weekday,y=media))+
+  geom_col(fill="#FF585D")+
+  labs(x = "Dias da semana", y = "Antecedência média",
+       title = "Antecêndencia média por dia da semana")+
+  theme_light()+
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(colour = "#484848"))
+```
+
+# NOTAS FINAIS SOBRE O DESAFIO
+
+Achei essa experiência muito interessante, o desafio propôs uma situação real e pediu soluções práticas, plausíveis e desafiadoras o suficiente. Me permitiu a liberdade de entregar o resultado de diversas formas, seja utilizando o R ou Python, fazendo um notebook Jupyter ou entregando simplesmente em PDF. O tempo de entrega do desafio foi justo.
+
+Além das soluções pedidas, achei interessante entregar um produto a mais para essa análise. Desenvolvi um aplicativo web que funciona como um dashboard online para visualização rápida dos dados, nesse aplicativo é possível encontrar gráficos de variáveis individuais, gráficos de cruzamento de variáveis e gráficos de variáveis ao longo do tempo. O aplicativo pode ser encontrado nesse [link](https://wesley-almeida-cruz-wess.shinyapps.io/desafio_seazone/). 
+
+Finalmente, meu *feedback* para o desafio proposto pela Seazone é extremamente positivo!
