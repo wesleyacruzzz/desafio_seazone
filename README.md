@@ -29,7 +29,7 @@ Após a instalação dos pacotes o(a) avaliador(a) pode rodar os códigos encont
 setwd("diretório dos dados")
 ```
 
-Caso prefira, o(a) avaliador(a) pode acessar a versão *HTML* do relatório final através desse [link](https://www.google.com/)
+Caso prefira, o(a) avaliador(a) pode acessar a versão *HTML* do relatório final através desse [link](https://htmlpreview.github.io/?https://github.com/wesleyacruzzz/desafio_seazone/blob/main/Arquivos/html_relatorio_desafio_seazone.html)
 
 O aplicativo *web* foi um extra que eu decidi adicionar ao desafio. O *app* funciona como um dashboard online para visualização rápida dos dados, nesse aplicativo é possível encontrar gráficos de variáveis individuais, gráficos de cruzamento de variáveis e gráficos de variáveis ao longo do tempo. 
 
