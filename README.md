@@ -34,3 +34,5 @@ Caso prefira, o(a) avaliador(a) pode acessar a versão *HTML* do relatório fina
 O aplicativo *web* foi um extra que eu decidi adicionar ao desafio. O *app* funciona como um dashboard online para visualização rápida dos dados, nesse aplicativo é possível encontrar gráficos de variáveis individuais, gráficos de cruzamento de variáveis e gráficos de variáveis ao longo do tempo. 
 
 Caso o usuário tenha alguma dificuldade ou não saber como interagir com o aplicativo, basta clicar nos ícones de interrogação localizados no canto superior direito da tela, lá terá um resumo de cada página no dashboard. O aplicativo pode ser encontrado nesse [link](https://wesley-almeida-cruz-wess.shinyapps.io/desafio_seazone/). 
+
+![](https://github.com/wesleyacruzzz/desafio_seazone/blob/Imagens/print_app.png?raw=true)
