@@ -36,5 +36,5 @@ O aplicativo *web* foi um extra que eu decidi adicionar ao desafio. O *app* func
 Caso o usuário tenha alguma dificuldade ou não saber como interagir com o aplicativo, basta clicar nos ícones de interrogação localizados no canto superior direito da tela, lá terá um resumo de cada página no dashboard. O aplicativo pode ser encontrado nesse [link](https://wesley-almeida-cruz-wess.shinyapps.io/desafio_seazone/). 
 
 <p align="center">
-  <img src="https://github.com/wesleyacruzzz/desafio_seazone/blob/main/Imagens/print_app.png" width="350" title=" ">
+  <img src="https://github.com/wesleyacruzzz/desafio_seazone/blob/main/Imagens/print_app.png" width="700" title=" ">
 </p>
