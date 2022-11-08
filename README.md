@@ -33,7 +33,7 @@ If the need arises, the evaluator can access the HTML version of the final repor
 
 The web application was an extra that I decided to add to the challenge. The app works as an online dashboard for quick data visualization, in this application it is possible to find graphs of individual variables, graphs of crossing of variables and graphs of variables over time.
 
-If the user has any difficulty or does not know how to interact with the application, just click on the question mark icons located in the upper right corner of the screen, there will be a summary of each page on the dashboard. The application can be found at this [link](https://wesley-almeida-cruz-wess.shinyapps.io/desafio_seazone/).
+If the user has any difficulty or does not know how to interact with the application, just click on the question mark icons located in the upper right corner of the screen, there will be a summary of each page on the dashboard. The application can be found at this [link](https://x2estatistica.shinyapps.io/listing_analysis/).
 
 <p align="center">
   <img src="https://github.com/wesleyacruzzz/desafio_seazone/blob/main/Imagens/print_app.png" width="900" title=" ">
